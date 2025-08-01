@@ -1,0 +1,131 @@
+import numpy as np
+import time
+
+GRID_SIZE = 5
+grid = np.zeros((GRID_SIZE, GRID_SIZE))
+grid[1, 2] = 1  # Dirt
+grid[2, 4] = 1  # Dirt
+grid[3, 1] = 1  # Dirt
+grid[4, 3] = 1  # Dirt
+grid[2, 2] = -1 # Obstacle
+grid[3, 3] = -1 # Obstacle
+
+# Define rewards
+REWARD_DIRT = 1
+REWARD_OBSTACLE = -1
+REWARD_EMPTY = -0.1 # Small penalty for each move to encourage efficiency
+
+# Define actions (Up, Down, Left, Right)
+ACTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+ACTION_NAMES = ['Up', 'Down', 'Left', 'Right']
+
+class CleaningRobot:
+    """
+    Manages the robot's state and interaction with the grid.
+    """
+    def __init__(self, start_pos=(0, 0)):
+        self.pos = start_pos
+        self.total_reward = 0
+        self.path = [start_pos]
+
+    def move(self, action_index, current_grid):
+        """
+        Move the robot according to the chosen action.
+        Returns the reward for the move.
+        """
+        action = ACTIONS[action_index]
+        new_pos = (self.pos[0] + action[0], self.pos[1] + action[1])
+
+        # Check for boundary conditions
+        if not (0 <= new_pos[0] < GRID_SIZE and 0 <= new_pos[1] < GRID_SIZE):
+            # Stay in the same place if move is out of bounds
+            return REWARD_EMPTY
+
+        # Check for obstacles
+        if current_grid[new_pos[0], new_pos[1]] == -1:
+            # Bounced off obstacle, stay in place but get penalty
+            self.total_reward += REWARD_OBSTACLE
+            return REWARD_OBSTACLE
+
+        # Update position
+        self.pos = new_pos
+        self.path.append(self.pos)
+        
+        # Calculate reward
+        reward = 0
+        cell_value = current_grid[self.pos[0], self.pos[1]]
+        if cell_value == 1:
+            reward = REWARD_DIRT
+            current_grid[self.pos[0], self.pos[1]] = 0 # Clean the dirt
+        else:
+            reward = REWARD_EMPTY
+            
+        self.total_reward += reward
+        return reward
+
+def random_policy(robot_pos, current_grid):
+    return np.random.randint(0, 4)
+
+def deterministic_policy(robot_pos, current_grid):
+    preferred_actions = [3, 1, 2, 0] # Right, Down, Left, Up indices
+    for action_index in preferred_actions:
+        action = ACTIONS[action_index]
+        next_pos = (robot_pos[0] + action[0], robot_pos[1] + action[1])
+        
+        # Check if the move is valid (within bounds and not an obstacle)
+        if (0 <= next_pos[0] < GRID_SIZE and 
+            0 <= next_pos[1] < GRID_SIZE and 
+            current_grid[next_pos[0], next_pos[1]] != -1):
+            return action_index
+            
+    return 0 # Default to 'Up' if all else fails (should not happen in open space)
+
+def run_simulation(policy, policy_name, initial_grid):
+    """
+    Runs a full simulation episode for a given policy.
+    """
+    print(f"\n--- Running Simulation with {policy_name} ---")
+    
+    # Create a fresh copy of the grid for the simulation
+    sim_grid = initial_grid.copy()
+    robot = CleaningRobot()
+    max_steps = 50 # To prevent infinite loops
+    
+    print("Initial Grid State (1=Dirt, -1=Obstacle):")
+    print(sim_grid)
+    print(f"Robot starts at: {robot.pos}")
+
+    for step in range(max_steps):
+        # Stop if all dirt is cleaned
+        if np.sum(sim_grid == 1) == 0:
+            print("\nAll dirt has been cleaned!")
+            break
+            
+        # Get action from the policy
+        action_idx = policy(robot.pos, sim_grid)
+        
+        # Move the robot
+        robot.move(action_idx, sim_grid)
+        
+        print(f"Step {step+1}: Chose '{ACTION_NAMES[action_idx]}', moved to {robot.pos}, Total Reward: {robot.total_reward:.2f}")
+        time.sleep(0.1) # Pause for visualization
+
+    print("\n--- Simulation Finished ---")
+    print(f"Policy: {policy_name}")
+    print(f"Total steps: {len(robot.path) - 1}")
+    print(f"Final position: {robot.pos}")
+    print(f"Total reward: {robot.total_reward:.2f}")
+    print("Robot's path:", robot.path)
+    print("Final Grid State:")
+    print(sim_grid)
+
+
+if __name__ == "__main__":
+    print("=====================================================")
+    print("      Autonomous Cleaning Robot Simulation")
+    print("=====================================================")
+    
+    run_simulation(random_policy, "Random Policy", grid)
+    run_simulation(deterministic_policy, "Deterministic Policy", grid)
+    
+   
