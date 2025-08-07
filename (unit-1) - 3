@@ -1,0 +1,112 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# 1. Environment Setup
+# Let's define 4 prices (the "arms" of the bandit)
+prices = [10, 20, 30, 40]
+n_arms = len(prices)
+# Simulate the "true" probability of a customer buying at each price
+# Higher prices have lower probability of a sale.
+true_conversion_rates = [0.6, 0.4, 0.2, 0.1]
+
+def get_reward(arm_index):
+    """Simulates pulling an arm. Returns revenue."""
+    if np.random.rand() < true_conversion_rates[arm_index]:
+        return prices[arm_index] # Sale!
+    return 0 # No sale
+
+# 2. Simulation Parameters
+n_trials = 2000
+
+# 3. Algorithms Implementation
+
+# Epsilon-Greedy
+def epsilon_greedy(epsilon):
+    q_values = np.zeros(n_arms)
+    arm_counts = np.zeros(n_arms)
+    revenue_history = []
+    total_revenue = 0
+
+    for _ in range(n_trials):
+        if np.random.rand() < epsilon:
+            arm = np.random.randint(n_arms) # Explore
+        else:
+            arm = np.argmax(q_values) # Exploit
+        
+        reward = get_reward(arm)
+        total_revenue += reward
+        revenue_history.append(total_revenue)
+        
+        arm_counts[arm] += 1
+        q_values[arm] += (reward - q_values[arm]) / arm_counts[arm]
+        
+    return revenue_history
+
+# Upper Confidence Bound (UCB1)
+def ucb():
+    q_values = np.zeros(n_arms)
+    arm_counts = np.zeros(n_arms)
+    revenue_history = []
+    total_revenue = 0
+
+    for t in range(1, n_trials + 1):
+        ucb_values = np.zeros(n_arms)
+        for arm in range(n_arms):
+            if arm_counts[arm] == 0:
+                ucb_values[arm] = float('inf')
+            else:
+                bonus = np.sqrt((2 * np.log(t)) / arm_counts[arm])
+                ucb_values[arm] = q_values[arm] + bonus
+        
+        arm = np.argmax(ucb_values)
+        reward = get_reward(arm)
+        total_revenue += reward
+        revenue_history.append(total_revenue)
+        
+        arm_counts[arm] += 1
+        q_values[arm] += (reward - q_values[arm]) / arm_counts[arm]
+        
+    return revenue_history
+    
+# Thompson Sampling
+def thompson_sampling():
+    # Parameters for the Beta distribution (successes, failures)
+    beta_params = np.ones((n_arms, 2)) # Start with (1, 1) for each arm
+    revenue_history = []
+    total_revenue = 0
+
+    for _ in range(n_trials):
+        # Sample from the posterior distribution for each arm
+        samples = [np.random.beta(beta_params[i][0], beta_params[i][1]) for i in range(n_arms)]
+        arm = np.argmax(samples)
+        
+        reward = get_reward(arm)
+        total_revenue += reward
+        revenue_history.append(total_revenue)
+
+        # Update the Beta distribution parameters
+        if reward > 0:
+            beta_params[arm][0] += 1 # Success
+        else:
+            beta_params[arm][1] += 1 # Failure
+            
+    return revenue_history
+
+# 4. Run Simulations and Compare
+eg_revenue = epsilon_greedy(epsilon=0.1)
+ucb_revenue = ucb()
+ts_revenue = thompson_sampling()
+
+# Plotting the results
+plt.figure(figsize=(12, 7))
+plt.plot(eg_revenue, label='Epsilon-Greedy (ε=0.1)')
+plt.plot(ucb_revenue, label='UCB1')
+plt.plot(ts_revenue, label='Thompson Sampling')
+plt.title('Multi-Armed Bandit Revenue Comparison')
+plt.xlabel('Trials')
+plt.ylabel('Total Cumulative Revenue')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+print(f"Final Revenue | Epsilon-Greedy: {eg_revenue[-1]:.0f}, UCB1: {ucb_revenue[-1]:.0f}, Thompson Sampling: {ts_revenue[-1]:.0f}")
