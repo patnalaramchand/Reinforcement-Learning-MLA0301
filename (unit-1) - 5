@@ -1,0 +1,98 @@
+import numpy as np
+
+# 1. Environment Setup
+grid_size = (6, 6)
+warehouse = (0, 0)
+delivery_points = [(1, 4), (4, 1), (5, 5)]
+obstacles = [(2, 2), (2, 3), (3, 2), (3, 3)]
+actions = ['up', 'down', 'left', 'right']
+
+# Rewards: penalize each step to encourage shortest path
+step_penalty = -1
+goal_reward = 10
+obstacle_penalty = -100 # Severe penalty
+
+# 2. Policy Iteration Implementation
+gamma = 0.9 # Discount factor
+theta = 1e-6 # Convergence threshold
+
+# Initialize with a random policy and zero value function
+policy = np.random.randint(0, 4, size=grid_size)
+value_function = np.zeros(grid_size)
+
+def get_reward_and_next_state(state, action):
+    """Helper function to get outcome of an action."""
+    if state in delivery_points:
+        return state, 0 # Terminal state
+    
+    next_state = list(state)
+    if action == 0 and state[0] > 0: next_state[0] -= 1
+    elif action == 1 and state[0] < grid_size[0] - 1: next_state[0] += 1
+    elif action == 2 and state[1] > 0: next_state[1] -= 1
+    elif action == 3 and state[1] < grid_size[1] - 1: next_state[1] += 1
+    next_state = tuple(next_state)
+
+    if next_state in obstacles:
+        return state, obstacle_penalty # Bounces back, gets penalty
+    
+    reward = goal_reward if next_state in delivery_points else step_penalty
+    return next_state, reward
+
+policy_stable = False
+iteration = 0
+while not policy_stable:
+    iteration += 1
+    # a. Policy Evaluation
+    while True:
+        delta = 0
+        for r in range(grid_size[0]):
+            for c in range(grid_size[1]):
+                state = (r, c)
+                v = value_function[state]
+                action = policy[state]
+                
+                next_state, reward = get_reward_and_next_state(state, action)
+                
+                # Update value function
+                value_function[state] = reward + gamma * value_function[next_state]
+                delta = max(delta, abs(v - value_function[state]))
+                
+        if delta < theta:
+            break
+
+    # b. Policy Improvement
+    policy_stable = True
+    for r in range(grid_size[0]):
+        for c in range(grid_size[1]):
+            state = (r, c)
+            old_action = policy[state]
+            
+            # Find the best action by looking one step ahead
+            action_values = []
+            for action_idx in range(len(actions)):
+                next_state, reward = get_reward_and_next_state(state, action_idx)
+                action_values.append(reward + gamma * value_function[next_state])
+            
+            best_action = np.argmax(action_values)
+            policy[state] = best_action
+            
+            if old_action != best_action:
+                policy_stable = False
+    
+    print(f"Iteration {iteration}: Policy may have changed.")
+
+print("\nPolicy Iteration Converged!")
+
+# 3. Display Optimal Policy
+policy_symbols = ['↑', '↓', '←', '→']
+optimal_policy_grid = np.full(grid_size, ' ', dtype=str)
+
+for r in range(grid_size[0]):
+    for c in range(grid_size[1]):
+        if (r, c) in obstacles: optimal_policy_grid[r, c] = 'X'
+        elif (r, c) in delivery_points: optimal_policy_grid[r, c] = 'G'
+        elif (r, c) == warehouse: optimal_policy_grid[r, c] = 'W'
+        else: optimal_policy_grid[r, c] = policy_symbols[policy[r, c]]
+
+print("\nOptimal Drone Policy (W: Warehouse, G: Goal, X: Obstacle):")
+print(optimal_policy_grid)
