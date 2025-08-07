@@ -1,0 +1,105 @@
+import numpy as np
+import time
+from IPython.display import clear_output
+
+# 1. Environment Setup
+grid_size = 5
+grid = np.zeros((grid_size, grid_size))
+
+# Define rewards/penalties
+dirt_reward = 1
+obstacle_penalty = -1
+empty_reward = -0.1 # Small penalty for each step to encourage efficiency
+
+# Place dirt and obstacles (1 = dirt, -1 = obstacle)
+dirt_locations = [(0, 4), (1, 3), (2, 0), (4, 2)]
+obstacle_locations = [(1, 1), (2, 2), (3, 3), (4, 4)]
+
+for loc in dirt_locations:
+    grid[loc] = dirt_reward
+for loc in obstacle_locations:
+    grid[loc] = obstacle_penalty
+
+print("Initial Grid:")
+print(grid)
+
+# 2. Q-Learning Parameters
+q_table = np.zeros((grid_size, grid_size, 4)) # State (row, col) and 4 actions
+actions = ['up', 'down', 'left', 'right'] # 0, 1, 2, 3
+
+alpha = 0.1  # Learning rate
+gamma = 0.9  # Discount factor
+epsilon = 0.1  # Exploration rate
+episodes = 2000
+
+# 3. Q-Learning Algorithm
+for episode in range(episodes):
+    state = (0, 0) # Start at top-left
+    dirt_to_clean = list(dirt_locations)
+    done = False
+    
+    while not done:
+        # Epsilon-greedy action selection
+        if np.random.uniform(0, 1) < epsilon:
+            action = np.random.choice(4) # Explore
+        else:
+            action = np.argmax(q_table[state[0], state[1]]) # Exploit
+
+        # Take action and get next state
+        next_state = list(state)
+        if action == 0 and next_state[0] > 0: next_state[0] -= 1 # Up
+        elif action == 1 and next_state[0] < grid_size - 1: next_state[0] += 1 # Down
+        elif action == 2 and next_state[1] > 0: next_state[1] -= 1 # Left
+        elif action == 3 and next_state[1] < grid_size - 1: next_state[1] += 1 # Right
+        next_state = tuple(next_state)
+
+        # Get reward
+        reward = empty_reward
+        if next_state in dirt_to_clean:
+            reward = dirt_reward
+            dirt_to_clean.remove(next_state)
+        elif next_state in obstacle_locations:
+            reward = obstacle_penalty
+
+        # Update Q-table
+        old_value = q_table[state[0], state[1], action]
+        next_max = np.max(q_table[next_state[0], next_state[1]])
+        
+        new_value = old_value + alpha * (reward + gamma * next_max - old_value)
+        q_table[state[0], state[1], action] = new_value
+
+        state = next_state
+        
+        # End episode if all dirt is cleaned
+        if not dirt_to_clean:
+            done = True
+
+print("\nTraining finished.\n")
+
+# 4. Simulate Optimal Policy
+print("Simulating Optimal Path:")
+state = (0, 0)
+path = [state]
+dirt_to_clean = list(dirt_locations)
+
+while dirt_to_clean:
+    action = np.argmax(q_table[state[0], state[1]])
+    
+    next_state = list(state)
+    if action == 0 and next_state[0] > 0: next_state[0] -= 1
+    elif action == 1 and next_state[0] < grid_size - 1: next_state[0] += 1
+    elif action == 2 and next_state[1] > 0: next_state[1] -= 1
+    elif action == 3 and next_state[1] < grid_size - 1: next_state[1] += 1
+    state = tuple(next_state)
+    path.append(state)
+    
+    if state in dirt_to_clean:
+        dirt_to_clean.remove(state)
+        print(f"Cleaned dirt at {state}!")
+        
+    # To prevent infinite loops if policy is suboptimal
+    if len(path) > grid_size * grid_size:
+        print("Could not find all dirt, breaking loop.")
+        break
+        
+print("\nOptimal path found:", path)
