@@ -1,0 +1,75 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# --- 1. Data Generation Model (The Simulated Environment) ---
+def simulate_inventory(policy, days=365, holding_cost=0.1, stockout_cost=2.0, avg_demand=50):
+    """
+    Simulates inventory dynamics for a given policy.
+    - policy: A function that takes the current inventory and returns an order amount.
+    - holding_cost: Cost per item per day for items sitting in inventory.
+    - stockout_cost: Cost per item for unmet demand.
+    - avg_demand: Average customer demand per day.
+    """
+    inventory_level = [100]  # Start with 100 items
+    total_cost = 0
+    
+    for day in range(days):
+        # 1. Customer demand for the day (using a Poisson distribution)
+        demand = np.random.poisson(avg_demand)
+        
+        # 2. Fulfill demand from current inventory
+        units_sold = min(inventory_level[-1], demand)
+        
+        # 3. Calculate costs for the day
+        # Cost for holding unsold inventory
+        daily_holding_cost = inventory_level[-1] * holding_cost
+        # Cost for unmet demand (stockouts)
+        daily_stockout_cost = max(0, demand - units_sold) * stockout_cost
+        total_cost += daily_holding_cost + daily_stockout_cost
+        
+        # 4. Update inventory level after sales
+        current_inventory = inventory_level[-1] - units_sold
+        
+        # 5. Apply the inventory management policy to place a new order
+        order_amount = policy(current_inventory, day)
+        
+        # 6. Add newly ordered items to inventory for the next day
+        inventory_level.append(current_inventory + order_amount)
+        
+    return np.array(inventory_level), total_cost
+
+# --- 2. Define Inventory Management Policies ---
+def constant_weekly_policy(inventory, day):
+    """Orders a fixed amount (350 units) every Monday (day % 7 == 0)."""
+    if day % 7 == 0:
+        return 350
+    return 0
+
+def sS_policy(inventory, day, s=50, S=400):
+    """If inventory drops below s (50), order up to S (400)."""
+    if inventory < s:
+        return S - inventory
+    return 0
+
+# --- 3. Run Simulations and Evaluate Policies ---
+print("Simulating different inventory management policies...")
+
+# Run simulation for the constant policy
+inv_constant, cost_constant = simulate_inventory(constant_weekly_policy)
+print(f"Total cost with Constant Weekly Policy: ${cost_constant:.2f}")
+
+# Run simulation for the (s, S) policy
+inv_sS, cost_sS = simulate_inventory(sS_policy)
+print(f"Total cost with (s, S) Policy: ${cost_sS:.2f}")
+
+# --- 4. Visualization ---
+plt.figure(figsize=(14, 7))
+plt.plot(inv_constant, label=f'Constant Policy (Cost: ${cost_constant:.0f})')
+plt.plot(inv_sS, label=f'(s, S) Policy (Cost: ${cost_sS:.0f})')
+plt.axhline(y=50, color='r', linestyle='--', label='Min threshold (s) for (s,S) policy')
+plt.title("Inventory Level Over Time for Different Policies")
+plt.xlabel("Day")
+plt.ylabel("Number of Items in Inventory")
+plt.legend()
+plt.grid(True)
+plt.show()

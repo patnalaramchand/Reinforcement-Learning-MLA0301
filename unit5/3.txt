@@ -1,0 +1,136 @@
+import numpy as np
+
+# --- 1. Environment and Task Definition ---
+# The agent needs to get an item at pos 4 and deliver it to pos 0
+# State is a tuple: (agent_pos, has_item_flag)
+NUM_STATES = 5
+agent_pos, has_item = 0, 0 # Initial state
+
+# Task hierarchy
+# Root -> Get
+# Root -> Put
+SUBTASKS = {'Get': 0, 'Put': 1}
+ACTIONS = {'North': 0, 'South': 1, 'Get': 2, 'Put': 3} # Primitive actions
+
+# --- 2. MAXQ Implementation ---
+# Q[task_id][state_tuple][action_id]
+Q = {
+    'Root': np.zeros((NUM_STATES, 2, len(ACTIONS))),
+    'Get':  np.zeros((NUM_STATES, 2, len(ACTIONS))),
+    'Put':  np.zeros((NUM_STATES, 2, len(ACTIONS)))
+}
+# V[task_id][state_tuple]
+V = {'Get': np.zeros((NUM_STATES, 2)), 'Put': np.zeros((NUM_STATES, 2))}
+
+def is_terminal(state, task):
+    """Check if a state is terminal for a given task."""
+    pos, has = state
+    if task == 'Get' and has == 1: return True
+    if task == 'Put' and pos == 0 and has == 0: return True
+    return False
+
+def get_reward(state, action):
+    """Get reward for primitive actions."""
+    pos, has = state
+    # Successful Get
+    if action == ACTIONS['Get'] and pos == 4 and has == 0: return 100
+    # Successful Put
+    if action == ACTIONS['Put'] and pos == 0 and has == 1: return 100
+    # All other actions have a small penalty
+    return -1
+
+def maxQ_learn(state, task, alpha=0.1, gamma=0.9):
+    """Performs one step of MAXQ learning."""
+    if is_terminal(state, task):
+        return
+    
+    # Choose an action (subtask or primitive)
+    # In a real implementation, this would be epsilon-greedy
+    if task == 'Root':
+        # If we don't have the item, the only logical subtask is 'Get'
+        action = 'Get' if state[1] == 0 else 'Put'
+        
+        # Decomposed Q-value update for the Root task
+        # Q(Root, s, a) = V(a, s) + Q(Root, s', a')
+        # For simplicity, we just learn V(a,s) here
+        
+        # Recursively learn the subtask
+        maxQ_learn(state, action)
+        
+        # Update V for the subtask
+        V[action][state] = (1 - alpha) * V[action][state] + alpha * max(Q[action][state])
+        
+    else: # This is a primitive task ('Get' or 'Put')
+        # Choose a primitive action (N, S)
+        # Simple policy: move towards the goal for the current task
+        pos, has = state
+        if task == 'Get': target_pos = 4
+        else: target_pos = 0
+        
+        if pos < target_pos: prim_action = ACTIONS['North']
+        elif pos > target_pos: prim_action = ACTIONS['South']
+        else: # We are at the right location for the task
+            prim_action = ACTIONS[task] # Perform the 'Get' or 'Put' action
+        
+        # Simulate taking the primitive action
+        reward = get_reward(state, prim_action)
+        
+        # Update next state
+        next_pos, next_has = pos, has
+        if prim_action == ACTIONS['North']: next_pos = min(NUM_STATES - 1, pos + 1)
+        elif prim_action == ACTIONS['South']: next_pos = max(0, pos - 1)
+        elif prim_action == ACTIONS['Get'] and pos == 4 and has == 0: next_has = 1
+        elif prim_action == ACTIONS['Put'] and pos == 0 and has == 1: next_has = 0
+        
+        next_state = (next_pos, next_has)
+        
+        # Update Q-value for the primitive task
+        # Q(p, s, a) = r + gamma * V(p, s')
+        Q[task][state][prim_action] = reward + gamma * max(Q[task][next_state])
+
+# --- 3. Simulation ---
+print("Training with MAXQ...")
+for i in range(1000):
+    # Start from a random state to learn more robustly
+    start_pos = np.random.randint(0, NUM_STATES)
+    start_has_item = np.random.randint(0, 2)
+    initial_state = (start_pos, start_has_item)
+    
+    maxQ_learn(initial_state, 'Root')
+
+print("Training complete.")
+print("\nLearned V-function for 'Get' subtask (pos, has_item):")
+print(np.round(V['Get'], 1))
+print("\nLearned V-function for 'Put' subtask (pos, has_item):")
+print(np.round(V['Put'], 1))
+
+# --- 4. Evaluate Policy ---
+def run_final_policy():
+    state = (0, 0) # Start at pos 0, no item
+    path = [state]
+    print("\nExecuting learned policy:")
+    for _ in range(10):
+        pos, has = state
+        print(f"State: {state}", end=" -> ")
+        
+        # High-level choice
+        subtask = 'Get' if has == 0 else 'Put'
+        
+        # Low-level action choice based on the subtask's Q-values
+        action = np.argmax(Q[subtask][state])
+        
+        # Update state based on action
+        next_pos, next_has = pos, has
+        if action == ACTIONS['North']: next_pos = min(NUM_STATES - 1, pos + 1)
+        elif action == ACTIONS['South']: next_pos = max(0, pos - 1)
+        elif action == ACTIONS['Get'] and pos == 4 and has == 0: next_has = 1
+        elif action == ACTIONS['Put'] and pos == 0 and has == 1: next_has = 0
+        state = (next_pos, next_has)
+        path.append(state)
+        
+        if state == (0, 0) and path[-2] == (0, 1):
+            print("State: (0, 0). Task Complete!")
+            break
+    return path
+
+final_path = run_final_policy()

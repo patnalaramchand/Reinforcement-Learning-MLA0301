@@ -1,0 +1,105 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# --- 1. Environment: A Simple Control Task ---
+# The goal is to move an object from position 0 to a target position.
+# The 'friction' of the system changes in each task.
+class ControlEnv:
+    def __init__(self, friction, target=10.0):
+        self.friction = friction
+        self.target = target
+        self.position = 0.0
+        self.velocity = 0.0
+
+    def step(self, force):
+        """Simulate one step of physics."""
+        # Simple physics: F = ma -> a = F/m (assume m=1)
+        # Add friction, which opposes velocity
+        acceleration = force - self.velocity * self.friction
+        self.velocity += acceleration * 0.1 # dt = 0.1
+        self.position += self.velocity * 0.1
+        
+        # Error is the distance to the target
+        error = self.target - self.position
+        return error
+
+# --- 2. Meta-Learning Implementation ---
+# The 'policy' is a simple P-controller: force = Kp * error
+# Meta-learning will find a good initial Kp that can be adapted quickly.
+meta_Kp = 2.0  # The initial Kp learned through meta-training
+meta_lr = 0.1  # Meta-learning rate for updating meta_Kp
+inner_lr = 0.05 # Learning rate for fast adaptation within a task
+
+num_meta_epochs = 50
+num_tasks = 10 # Number of different friction environments to train on
+
+print("Starting Meta-Learning process...")
+for epoch in range(meta_epochs):
+    meta_gradient = 0.0
+    
+    # Sample a batch of different tasks (different frictions)
+    tasks_friction = np.random.uniform(0.1, 2.0, num_tasks)
+    
+    for friction in tasks_friction:
+        env = ControlEnv(friction)
+        
+        # --- Fast Adaptation Phase (Inner Loop) ---
+        # Start with the meta-learned Kp
+        Kp = meta_Kp
+        
+        # Adapt Kp for a few steps on the new task
+        for _ in range(5): # 5 adaptation steps
+            error = env.step(force=Kp * (env.target - env.position))
+            # Gradient of squared error w.r.t Kp
+            grad = -2 * error * (env.target - env.position)
+            # Update Kp for this specific task
+            Kp -= inner_lr * grad
+            
+        # --- Meta-Update Phase (Outer Loop) ---
+        # Evaluate the performance of the *adapted* Kp
+        final_error = env.step(force=Kp * (env.target - env.position))
+        
+        # The meta-gradient is the gradient of the final error w.r.t the *initial* meta_Kp.
+        # This is a simplification; a true MAML algorithm would use higher-order derivatives.
+        meta_gradient += -2 * final_error * (env.target - env.position)
+
+    # Update the meta-parameter based on the average performance across all tasks
+    meta_Kp -= meta_lr * (meta_gradient / num_tasks)
+
+    if epoch % 5 == 0:
+        print(f"Meta-Epoch {epoch}, Learned Initial Kp: {meta_Kp:.3f}")
+
+print(f"\nMeta-training finished. Final initial Kp = {meta_Kp:.3f}")
+
+# --- 3. Evaluation: Test on New, Unseen Tasks ---
+def evaluate_adaptation(friction, initial_Kp):
+    """Simulates adaptation and returns the error history."""
+    env = ControlEnv(friction)
+    Kp = initial_Kp
+    errors = []
+    
+    # Run for 50 steps, adapting along the way
+    for i in range(50):
+        error = env.step(force=Kp * (env.target - env.position))
+        errors.append(abs(error))
+        
+        # Fast adaptation
+        grad = -2 * error * (env.target - env.position)
+        Kp -= inner_lr * grad
+        
+    return errors
+
+# Test on two new friction values the model has never seen
+errors_low_friction = evaluate_adaptation(friction=0.2, initial_Kp=meta_Kp)
+errors_high_friction = evaluate_adaptation(friction=2.5, initial_Kp=meta_Kp)
+
+# --- 4. Visualization ---
+plt.figure(figsize=(10, 6))
+plt.plot(errors_low_friction, label=f'Fast Adaptation on New Low Friction (0.2)')
+plt.plot(errors_high_friction, label=f'Fast Adaptation on New High Friction (2.5)')
+plt.title("Meta-Learning: Fast Adaptation to Unseen Conditions")
+plt.xlabel("Time Step")
+plt.ylabel("Control Error (Distance to Target)")
+plt.legend()
+plt.grid(True)
+plt.show()

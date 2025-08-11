@@ -1,0 +1,106 @@
+import numpy as np
+import time
+from IPython.display import clear_output
+
+# 1. Game Environment
+grid_size = 7
+class PacManGame:
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.pacman_pos = [0, 0]
+        self.ghost_pos = [grid_size - 1, grid_size - 1]
+        self.food_pos = [[1, 5], [3, 1], [5, 3]]
+        self.score = 0
+        self.done = False
+        return self.get_state()
+
+    def get_state(self):
+        # State is a tuple: (pacman_pos, tuple(food_pos), ghost_pos)
+        # We flatten food positions for dictionary key compatibility
+        flat_food = tuple(item for sublist in self.food_pos for item in sublist)
+        return (tuple(self.pacman_pos), flat_food, tuple(self.ghost_pos))
+        
+    def move_ghost(self):
+        # Simple ghost AI: move towards Pac-Man
+        move = np.sign(np.array(self.pacman_pos) - np.array(self.ghost_pos))
+        self.ghost_pos[0] += move[0]
+        self.ghost_pos[1] += move[1]
+
+    def step(self, action):
+        # Action: 0:up, 1:down, 2:left, 3:right
+        if action == 0 and self.pacman_pos[0] > 0: self.pacman_pos[0] -= 1
+        elif action == 1 and self.pacman_pos[0] < grid_size - 1: self.pacman_pos[0] += 1
+        elif action == 2 and self.pacman_pos[1] > 0: self.pacman_pos[1] -= 1
+        elif action == 3 and self.pacman_pos[1] < grid_size - 1: self.pacman_pos[1] += 1
+        
+        self.move_ghost()
+
+        reward = -1 # Step penalty
+        if self.pacman_pos in self.food_pos:
+            reward = 20
+            self.score += 1
+            self.food_pos.remove(self.pacman_pos)
+        elif self.pacman_pos == self.ghost_pos:
+            reward = -50
+            self.done = True
+        
+        if not self.food_pos:
+            reward = 100 # Won the game
+            self.done = True
+            
+        return self.get_state(), reward, self.done
+
+# 2. Q-learning Agent
+q_table = defaultdict(lambda: np.zeros(4))
+alpha = 0.1
+gamma = 0.9
+epsilon = 0.1
+episodes = 5000
+
+env = PacManGame()
+
+# 3. Training Loop
+for episode in range(episodes):
+    state = env.reset()
+    done = False
+    
+    while not done:
+        if np.random.uniform(0, 1) < epsilon:
+            action = np.random.choice(4)
+        else:
+            action = np.argmax(q_table[state])
+            
+        next_state, reward, done = env.step(action)
+        
+        old_value = q_table[state][action]
+        next_max = np.max(q_table[next_state])
+        
+        new_value = old_value + alpha * (reward + gamma * next_max - old_value)
+        q_table[state][action] = new_value
+        
+        state = next_state
+
+print("Training finished.\n")
+
+# 4. Evaluate the Agent
+print("Simulating trained agent:")
+state = env.reset()
+done = False
+for _ in range(50): # Max steps
+    clear_output(wait=True)
+    grid = np.full((grid_size, grid_size), '·')
+    for f in env.food_pos: grid[tuple(f)] = 'F'
+    grid[tuple(env.pacman_pos)] = 'P'
+    grid[tuple(env.ghost_pos)] = 'G'
+    print(grid)
+    print(f"Score: {env.score}")
+    
+    action = np.argmax(q_table[state])
+    state, reward, done = env.step(action)
+    
+    if done:
+        print("Game Over!")
+        break
+    time.sleep(0.3)

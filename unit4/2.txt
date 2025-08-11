@@ -1,0 +1,144 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import random
+
+# --- 1. Environment and Node Definition ---
+class Node:
+    """A node in the RRT tree."""
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.parent = None
+
+# Define the environment boundaries and obstacles
+class Environment:
+    def __init__(self, x_dim, y_dim, obstacles):
+        self.x_dim = x_dim
+        self.y_dim = y_dim
+        self.obstacles = obstacles
+
+    def is_collision(self, node):
+        """Check if a node is inside any obstacle."""
+        for (ox, oy, size) in self.obstacles:
+            if np.sqrt((node.x - ox)**2 + (node.y - oy)**2) <= size:
+                return True
+        return False
+
+# --- 2. RRT Algorithm Implementation ---
+class RRT:
+    """The RRT path planning algorithm."""
+    def __init__(self, start, goal, env, max_iter=500, step_size=2.0):
+        self.start = Node(start[0], start[1])
+        self.goal = Node(goal[0], goal[1])
+        self.env = env
+        self.node_list = [self.start]
+        self.max_iter = max_iter
+        self.step_size = step_size
+
+    def plan(self):
+        """Plans the path from start to goal."""
+        for i in range(self.max_iter):
+            # 1. Sample a random node
+            rnd_node = self.get_random_node()
+            
+            # 2. Find the nearest node in the tree
+            nearest_node_idx = self.get_nearest_node_index(self.node_list, rnd_node)
+            nearest_node = self.node_list[nearest_node_idx]
+            
+            # 3. Steer from nearest_node towards rnd_node
+            new_node = self.steer(nearest_node, rnd_node)
+            
+            # 4. If the path is collision-free, add the new node to the tree
+            if not self.env.is_collision(new_node):
+                new_node.parent = nearest_node
+                self.node_list.append(new_node)
+                
+                # Check if goal is reached
+                if self.calc_dist_to_goal(new_node.x, new_node.y) <= self.step_size:
+                    final_node = Node(self.goal.x, self.goal.y)
+                    final_node.parent = new_node
+                    self.node_list.append(final_node)
+                    print("Goal reached!")
+                    return self.generate_final_path(final_node)
+        
+        print("Could not find path to goal.")
+        return None # Return None if no path is found
+
+    def steer(self, from_node, to_node):
+        """Creates a new node by moving a step_size from from_node to to_node."""
+        d, theta = self.calc_distance_and_angle(from_node, to_node)
+        
+        new_node = Node(from_node.x, from_node.y)
+        new_node.x += min(self.step_size, d) * np.cos(theta)
+        new_node.y += min(self.step_size, d) * np.sin(theta)
+        
+        return new_node
+
+    def generate_final_path(self, goal_node):
+        """Backtracks from the goal node to get the path."""
+        path = [[self.goal.x, self.goal.y]]
+        node = goal_node
+        while node.parent is not None:
+            path.append([node.x, node.y])
+            node = node.parent
+        path.append([self.start.x, self.start.y])
+        return path
+
+    def get_random_node(self):
+        # With a 5% probability, sample the goal to bias the search
+        if random.randint(0, 100) > 5:
+            return Node(random.uniform(0, self.env.x_dim), 
+                        random.uniform(0, self.env.y_dim))
+        else:
+            return self.goal
+
+    def get_nearest_node_index(self, node_list, rnd_node):
+        dlist = [(node.x - rnd_node.x)**2 + (node.y - rnd_node.y)**2 for node in node_list]
+        return dlist.index(min(dlist))
+
+    def calc_dist_to_goal(self, x, y):
+        return np.sqrt((x - self.goal.x)**2 + (y - self.goal.y)**2)
+    
+    @staticmethod
+    def calc_distance_and_angle(from_node, to_node):
+        dx = to_node.x - from_node.x
+        dy = to_node.y - from_node.y
+        d = np.sqrt(dx**2 + dy**2)
+        theta = np.arctan2(dy, dx)
+        return d, theta
+
+# --- 3. Simulation and Visualization ---
+# Define environment
+obstacles = [(15, 25, 5), (35, 40, 8), (50, 15, 6), (70, 60, 10)]
+env = Environment(x_dim=100, y_dim=100, obstacles=obstacles)
+start_pos = (5, 5)
+goal_pos = (90, 80)
+
+# Plan the path
+rrt = RRT(start=start_pos, goal=goal_pos, env=env, max_iter=1000)
+path = rrt.plan()
+
+# Visualize
+plt.figure(figsize=(10, 10))
+# Plot obstacles
+for (ox, oy, size) in obstacles:
+    circle = plt.Circle((ox, oy), size, color='k')
+    plt.gca().add_patch(circle)
+# Plot RRT tree
+for node in rrt.node_list:
+    if node.parent:
+        plt.plot([node.x, node.parent.x], [node.y, node.parent.y], "-g")
+# Plot final path
+if path is not None:
+    path = np.array(path)
+    plt.plot(path[:, 0], path[:, 1], '-r', linewidth=2, label='Final Path')
+
+plt.plot(start_pos[0], start_pos[1], "go", markersize=10, label='Start')
+plt.plot(goal_pos[0], goal_pos[1], "bx", markersize=15, label='Goal')
+plt.title("RRT Path Planning")
+plt.xlabel("X Position")
+plt.ylabel("Y Position")
+plt.grid(True)
+plt.axis("equal")
+plt.legend()
+plt.show()

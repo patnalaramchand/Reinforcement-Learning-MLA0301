@@ -1,0 +1,98 @@
+import numpy as np
+import itertools
+
+# 1. Environment Definition
+# State: (cars_in_NS, cars_in_EW). Discretized into 3 levels: 0 (low), 1 (medium), 2 (high)
+max_cars = 3  # Corresponds to levels 0, 1, 2
+states = list(itertools.product(range(max_cars), repeat=2))
+n_states = len(states)
+state_to_idx = {s: i for i, s in enumerate(states)}
+
+# Actions: 0 (Green for NS), 1 (Green for EW)
+n_actions = 2
+
+# Dynamics (Probabilistic)
+# p_arrival[level] = probability of a car arriving if traffic is at 'level'
+p_arrival = [0.1, 0.3, 0.5]
+# cars_leave = number of cars that can pass on a green light
+cars_leave = 1
+
+# 2. Policy Iteration Implementation
+gamma = 0.9  # Discount factor
+theta = 1e-6 # Convergence threshold
+
+# Initialize with a random policy and zero value function
+policy = np.random.randint(0, n_actions, size=n_states)
+value_function = np.zeros(n_states)
+
+def get_next_state_and_reward(state_idx, action):
+    """Calculates expected value based on probabilistic transitions."""
+    expected_value = 0
+    
+    # Iterate over all possible arrival scenarios
+    for ns_arrival in [True, False]:
+        for ew_arrival in [True, False]:
+            
+            current_state = list(states[state_idx])
+            
+            # Probability of this specific arrival scenario happening
+            prob = (p_arrival[current_state[0]] if ns_arrival else 1 - p_arrival[current_state[0]]) * \
+                   (p_arrival[current_state[1]] if ew_arrival else 1 - p_arrival[current_state[1]])
+
+            next_state = list(current_state)
+            
+            # 1. Cars arrive
+            if ns_arrival: next_state[0] = min(next_state[0] + 1, max_cars - 1)
+            if ew_arrival: next_state[1] = min(next_state[1] + 1, max_cars - 1)
+            
+            # 2. Cars leave based on action
+            if action == 0: # Green NS
+                next_state[0] = max(next_state[0] - cars_leave, 0)
+            else: # Green EW
+                next_state[1] = max(next_state[1] - cars_leave, 0)
+            
+            # Reward is the negative of total waiting cars in the next state
+            reward = -(next_state[0] + next_state[1])
+            
+            next_state_idx = state_to_idx[tuple(next_state)]
+            expected_value += prob * (reward + gamma * value_function[next_state_idx])
+            
+    return expected_value
+
+policy_stable = False
+iteration = 0
+while not policy_stable:
+    iteration += 1
+    # a. Policy Evaluation
+    while True:
+        delta = 0
+        for s_idx in range(n_states):
+            v = value_function[s_idx]
+            action = policy[s_idx]
+            value_function[s_idx] = get_next_state_and_reward(s_idx, action)
+            delta = max(delta, abs(v - value_function[s_idx]))
+        if delta < theta:
+            break
+
+    # b. Policy Improvement
+    policy_stable = True
+    for s_idx in range(n_states):
+        old_action = policy[s_idx]
+        
+        action_values = [get_next_state_and_reward(s_idx, a) for a in range(n_actions)]
+        best_action = np.argmax(action_values)
+        
+        policy[s_idx] = best_action
+        if old_action != best_action:
+            policy_stable = False
+
+    print(f"Iteration {iteration}: Policy evaluation and improvement complete.")
+
+print("\nPolicy Iteration Converged!")
+
+# 3. Display Optimal Policy
+print("\nOptimal Traffic Light Policy:")
+print("(Cars NS, Cars EW) -> Green Light Direction")
+for s_idx, s in enumerate(states):
+    direction = "North-South" if policy[s_idx] == 0 else "East-West"
+    print(f"{s} -> {direction}")

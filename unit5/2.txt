@@ -1,0 +1,84 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# --- 1. Environment and Robot Definition ---
+class Robot:
+    def __init__(self, start_pos=(0,0)):
+        self.pos = np.array(start_pos, dtype=float)
+        self.has_object = False
+        self.path_history = [self.pos.copy()]
+
+    def move(self, direction):
+        """Primitive action: move the robot."""
+        self.pos += direction
+        self.path_history.append(self.pos.copy())
+        print(f"  - Primitive action: Moving to {self.pos}")
+
+    def pickup(self):
+        """Primitive action: pick up the object."""
+        self.has_object = True
+        print(f"  - Primitive action: Picked up object.")
+
+    def drop(self):
+        """Primitive action: drop the object."""
+        self.has_object = False
+        print(f"  - Primitive action: Dropped object.")
+
+# Define key locations
+object_loc = np.array([8.0, 8.0])
+dropzone_loc = np.array([1.0, 1.0])
+
+# --- 2. Hierarchical Abstract Machines (HAMs) Implementation ---
+def move_machine(robot, target_pos):
+    """
+    A lower-level machine (subroutine) for movement.
+    It executes a sequence of primitive 'move' actions.
+    """
+    print(f"  - Calling 'move_machine' with target {target_pos}...")
+    while np.linalg.norm(robot.pos - target_pos) > 0.5:
+        direction = (target_pos - robot.pos) / np.linalg.norm(target_pos - robot.pos)
+        robot.move(direction)
+    robot.pos = target_pos # Snap to target
+    robot.path_history.append(robot.pos.copy())
+    print(f"  - 'move_machine' finished.")
+
+def main_machine(robot):
+    """
+    The top-level machine that coordinates the overall task.
+    Its states can call other machines or execute primitive actions.
+    """
+    # State 1: GOTO_OBJECT
+    print("HAM State: GOTO_OBJECT")
+    move_machine(robot, object_loc) # Call the lower-level machine
+    
+    # State 2: PICKUP_OBJECT
+    print("\nHAM State: PICKUP_OBJECT")
+    robot.pickup() # Execute a primitive action
+    
+    # State 3: GOTO_DROPZONE
+    print("\nHAM State: GOTO_DROPZONE")
+    move_machine(robot, dropzone_loc) # Call the lower-level machine again
+    
+    # State 4: DROP_OBJECT
+    print("\nHAM State: DROP_OBJECT")
+    robot.drop() # Execute a primitive action
+    
+    print("\nTask complete!")
+
+# --- 3. Simulation and Visualization ---
+robot_agent = Robot()
+main_machine(robot_agent)
+
+# Visualize the path
+path = np.array(robot_agent.path_history)
+plt.figure(figsize=(8, 8))
+plt.plot(path[:, 0], path[:, 1], 'c-', label='Robot Path')
+plt.plot(0, 0, 'go', markersize=12, label='Start')
+plt.plot(object_loc[0], object_loc[1], 'ro', markersize=12, label='Object Location')
+plt.plot(dropzone_loc[0], dropzone_loc[1], 'b*', markersize=15, label='Drop Zone')
+plt.title("Robot Coordination with HAMs")
+plt.xlabel("X Coordinate")
+plt.ylabel("Y Coordinate")
+plt.grid(True)
+plt.legend()
+plt.show()

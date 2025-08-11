@@ -1,0 +1,82 @@
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
+import matplotlib.pyplot as plt
+
+# --- 1. Generate Synthetic Financial Data ---
+def generate_asset_data(days=1000):
+    """Generates synthetic daily price data for three assets."""
+    # Asset A: Higher return, higher volatility
+    returns_a = np.random.normal(0.001, 0.02, days)
+    # Asset B: Lower return, lower volatility
+    returns_b = np.random.normal(0.0005, 0.01, days)
+    # Asset C: Stable (like bonds)
+    returns_c = np.random.normal(0.0002, 0.005, days)
+    
+    # Calculate price series from returns
+    price_a = 100 * (1 + returns_a).cumprod()
+    price_b = 100 * (1 + returns_b).cumprod()
+    price_c = 100 * (1 + returns_c).cumprod()
+    
+    return pd.DataFrame({'AssetA': price_a, 'AssetB': price_b, 'AssetC': price_c})
+
+# --- 2. Define Portfolio Strategies ---
+# Portfolio 1: Aggressive (80% stocks)
+portfolio_1_weights = np.array([0.5, 0.3, 0.2])
+# Portfolio 2: Conservative (40% stocks)
+portfolio_2_weights = np.array([0.2, 0.2, 0.6])
+
+def calculate_portfolio_return(daily_returns, weights):
+    """Calculates the daily return of a portfolio."""
+    return daily_returns.dot(weights)
+
+# --- 3. Feature Engineering and Model Training ---
+def create_features_and_target(data, portfolio_weights, window=30):
+    """
+    Creates features (X) and target (y) for the ML model.
+    - X: Past 'window' days of returns for all assets.
+    - y: Next day's portfolio return.
+    """
+    daily_returns = data.pct_change().dropna()
+    portfolio_returns = calculate_portfolio_return(daily_returns, portfolio_weights)
+    
+    X, y = [], []
+    for i in range(len(daily_returns) - window):
+        # Features are the flattened returns of all assets in the window
+        X.append(daily_returns.iloc[i:i+window].values.flatten())
+        # Target is the portfolio's return on the next day
+        y.append(portfolio_returns.iloc[i+window])
+        
+    return np.array(X), np.array(y)
+
+# Generate data and create features for Portfolio 1
+asset_data = generate_asset_data()
+X, y = create_features_and_target(asset_data, portfolio_1_weights)
+
+# Split data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, shuffle=False)
+
+# Train the value-equivalence prediction model
+print("Training Random Forest model to predict portfolio returns...")
+model = RandomForestRegressor(n_estimators=100, random_state=42)
+model.fit(X_train, y_train)
+print("Model training complete.")
+
+# --- 4. Evaluate and Visualize ---
+# Make predictions on the test set
+predictions = model.predict(X_test)
+mse = mean_squared_error(y_test, predictions)
+print(f"\nMean Squared Error on Test Set: {mse:.8f}")
+
+# Visualize the results
+plt.figure(figsize=(14, 7))
+plt.plot(y_test, label='Actual Portfolio Return', alpha=0.7)
+plt.plot(predictions, label='Predicted Portfolio Return', linestyle='--')
+plt.title("Value-Equivalence Prediction: Actual vs. Predicted Returns")
+plt.xlabel("Time Step (Days in Test Set)")
+plt.ylabel("Daily Return")
+plt.legend()
+plt.grid(True)
+plt.show()

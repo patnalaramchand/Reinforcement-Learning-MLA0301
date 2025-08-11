@@ -1,0 +1,130 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# --- 1. Environment Setup ---
+GRID_SIZE = 7
+GOAL = (GRID_SIZE // 2, GRID_SIZE // 2)
+
+# --- 2. Multi-Agent Q-Learning Implementation ---
+class Agent:
+    def __init__(self, start_pos, agent_id):
+        self.id = agent_id
+        self.start_pos = start_pos
+        self.pos = start_pos
+        # Each agent has its own Q-table: Q[row, col, action]
+        self.q_table = np.zeros((GRID_SIZE, GRID_SIZE, 4)) # 4 actions: U, D, L, R
+
+    def reset(self):
+        self.pos = self.start_pos
+
+    def choose_action(self, epsilon=0.1):
+        """Epsilon-greedy action selection."""
+        if np.random.uniform(0, 1) < epsilon:
+            return np.random.randint(4) # Explore
+        else:
+            return np.argmax(self.q_table[self.pos]) # Exploit
+
+    def update_pos(self, action):
+        """Moves the agent based on the action."""
+        r, c = self.pos
+        if action == 0 and r > 0: r -= 1  # Up
+        elif action == 1 and r < GRID_SIZE - 1: r += 1  # Down
+        elif action == 2 and c > 0: c -= 1  # Left
+        elif action == 3 and c < GRID_SIZE - 1: c += 1  # Right
+        self.pos = (r, c)
+
+    def update_q_table(self, action, reward, next_pos, alpha=0.1, gamma=0.9):
+        """Updates the Q-table using the Bellman equation."""
+        old_q = self.q_table[self.pos][action]
+        next_max_q = np.max(self.q_table[next_pos])
+        new_q = old_q + alpha * (reward + gamma * next_max_q - old_q)
+        self.q_table[self.pos][action] = new_q
+
+# --- 3. Training Loop ---
+# Initialize two agents
+agent1 = Agent(start_pos=(0, 0), agent_id=1)
+agent2 = Agent(start_pos=(GRID_SIZE - 1, GRID_SIZE - 1), agent_id=2)
+agents = [agent1, agent2]
+
+num_episodes = 5000
+print("Training two agents to cooperate...")
+
+for episode in range(num_episodes):
+    # Reset agents for new episode
+    for agent in agents:
+        agent.reset()
+    
+    for step in range(50): # Max steps per episode
+        actions = {}
+        old_positions = {}
+        
+        # All agents choose an action first
+        for agent in agents:
+            old_positions[agent.id] = agent.pos
+            actions[agent.id] = agent.choose_action()
+        
+        # All agents move to their new positions
+        for agent in agents:
+            agent.update_pos(actions[agent.id])
+            
+        # Check for cooperation and calculate shared reward
+        if agent1.pos == GOAL and agent2.pos == GOAL:
+            reward = 100 # High reward for successful cooperation
+            done = True
+        else:
+            reward = -1 # Small penalty for each step
+            done = False
+            
+        # Each agent updates its own Q-table based on the outcome
+        for agent in agents:
+            agent.update_q_table(
+                actions[agent.id],
+                reward,
+                agent.pos
+            )
+            
+        if done:
+            break
+            
+    if (episode + 1) % 500 == 0:
+        print(f"Episode {episode + 1} finished.")
+
+print("\nTraining complete!")
+
+# --- 4. Visualization of a Coordinated Path ---
+# Simulate one episode with the learned policies (no exploration)
+for agent in agents:
+    agent.reset()
+
+path1 = [agent1.pos]
+path2 = [agent2.pos]
+
+for _ in range(20):
+    action1 = np.argmax(agent1.q_table[agent1.pos])
+    action2 = np.argmax(agent2.q_table[agent2.pos])
+    
+    agent1.update_pos(action1)
+    agent2.update_pos(action2)
+    
+    path1.append(agent1.pos)
+    path2.append(agent2.pos)
+    
+    if agent1.pos == GOAL and agent2.pos == GOAL:
+        break
+
+path1 = np.array(path1)
+path2 = np.array(path2)
+
+plt.figure(figsize=(8, 8))
+plt.plot(path1[:, 1], path1[:, 0], 'c-', label='Agent 1 Path')
+plt.plot(path2[:, 1], path2[:, 0], 'm-', label='Agent 2 Path')
+plt.plot(agent1.start_pos[1], agent1.start_pos[0], 'co', markersize=12, label='Agent 1 Start')
+plt.plot(agent2.start_pos[1], agent2.start_pos[0], 'mo', markersize=12, label='Agent 2 Start')
+plt.plot(GOAL[1], GOAL[0], 'g*', markersize=20, label='Cooperative Goal')
+
+plt.title("Multi-Agent Coordination")
+# Invert Y axis to match matrix indexing (row 0 is at the top)
+plt.gca().invert_yaxis()
+plt.grid(True)
+plt.legend()
+plt.show()

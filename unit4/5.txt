@@ -1,0 +1,88 @@
+import numpy as np
+import pandas as pd
+from sklearn.linear_model import LinearRegression
+import matplotlib.pyplot as plt
+
+# --- 1. Generate Synthetic Sales Data ---
+def generate_sales_data(days=200):
+    """
+    Generates synthetic data where demand is inversely related to price,
+    with some random noise.
+    """
+    # Price is randomly set each day
+    prices = np.random.uniform(10, 50, days)
+    # Demand = base - price_sensitivity * price + noise
+    base_demand = 150
+    price_sensitivity = 2.5
+    noise = np.random.normal(0, 10, days)
+    
+    demand = base_demand - price_sensitivity * prices + noise
+    demand = np.maximum(0, demand) # Demand cannot be negative
+    
+    return pd.DataFrame({'price': prices, 'demand': demand})
+
+# --- 2. Train the Predictive Demand Model ---
+sales_data = generate_sales_data()
+
+# Features (X) are the prices, Target (y) is the demand
+X = sales_data[['price']]
+y = sales_data['demand']
+
+print("Training a predictive model for customer demand...")
+demand_model = LinearRegression()
+demand_model.fit(X, y)
+print("Demand model training complete.")
+print(f"Learned relationship: demand = {demand_model.intercept_:.2f} + {demand_model.coef_[0]:.2f} * price")
+
+# --- 3. Model-Based Policy Optimization ---
+def find_optimal_price(model):
+    """
+    Uses the trained model to find the price that maximizes revenue.
+    This is the policy optimization step.
+    """
+    # Test a range of potential prices
+    candidate_prices = np.linspace(5, 60, 100).reshape(-1, 1)
+    
+    # Use the model to predict demand for each candidate price
+    predicted_demands = model.predict(candidate_prices)
+    
+    # Calculate expected revenue = price * predicted_demand
+    predicted_revenues = candidate_prices.flatten() * predicted_demands
+    
+    # Find the price that leads to the maximum predicted revenue
+    optimal_price_idx = np.argmax(predicted_revenues)
+    optimal_price = candidate_prices[optimal_price_idx][0]
+    max_revenue = predicted_revenues[optimal_price_idx]
+    
+    return optimal_price, max_revenue, candidate_prices, predicted_revenues
+
+# Find the best price using our model
+optimal_price, max_revenue, prices_range, revenues_range = find_optimal_price(demand_model)
+
+print(f"\nOptimal price found by the model: ${optimal_price:.2f}")
+print(f"Expected maximum revenue at this price: ${max_revenue:.2f}")
+
+# --- 4. Visualization ---
+# Plot 1: The learned demand curve
+plt.figure(figsize=(14, 6))
+plt.subplot(1, 2, 1)
+plt.scatter(X, y, alpha=0.5, label='Actual Sales Data')
+plt.plot(X, demand_model.predict(X), color='red', linewidth=2, label='Learned Demand Model')
+plt.title("Price vs. Demand")
+plt.xlabel("Price ($)")
+plt.ylabel("Demand (Units Sold)")
+plt.legend()
+plt.grid(True)
+
+# Plot 2: The predicted revenue curve used for optimization
+plt.subplot(1, 2, 2)
+plt.plot(prices_range, revenues_range, label='Predicted Revenue')
+plt.axvline(x=optimal_price, color='r', linestyle='--', label=f'Optimal Price (${optimal_price:.2f})')
+plt.title("Price vs. Predicted Revenue")
+plt.xlabel("Price ($)")
+plt.ylabel("Predicted Revenue ($)")
+plt.legend()
+plt.grid(True)
+
+plt.tight_layout()
+plt.show()

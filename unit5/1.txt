@@ -1,0 +1,83 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# --- 1. Environment Setup ---
+class UrbanEnvironment:
+    """A simple grid environment representing a city map."""
+    def __init__(self, size=20):
+        self.size = size
+        self.start_pos = (1, 1)
+        self.goal_pos = (18, 18)
+        # High-level subgoals (e.g., key intersections)
+        self.subgoals = [(5, 8), (15, 10), (10, 18), self.goal_pos]
+
+    def get_subgoals(self):
+        return self.subgoals
+
+# --- 2. Hierarchical Agent Implementation ---
+class HierarchicalAgent:
+    def __init__(self, env):
+        self.env = env
+        self.position = env.start_pos
+        self.high_level_policy = self.create_high_level_policy()
+        self.path_history = [self.position]
+
+    def create_high_level_policy(self):
+        """
+        High-Level Policy (Manager): Chooses the next subgoal.
+        For simplicity, this is a fixed plan, but in a full RL system,
+        this would be a learned policy.
+        """
+        # Simple policy: choose the subgoal that is closest to the goal
+        subgoals = self.env.get_subgoals()
+        goal = self.env.goal_pos
+        # Sort subgoals by distance to the final goal
+        sorted_subgoals = sorted(subgoals, key=lambda sg: np.linalg.norm(np.array(sg) - np.array(goal)), reverse=True)
+        return sorted_subgoals
+
+    def execute_low_level_policy(self, subgoal):
+        """
+        Low-Level Policy (Worker): Moves step-by-step towards the given subgoal.
+        This uses a simple greedy strategy.
+        """
+        print(f"  Low-level policy activated. Target subgoal: {subgoal}")
+        while self.position != subgoal:
+            # Move one step towards the subgoal
+            direction = np.sign(np.array(subgoal) - np.array(self.position))
+            new_pos = (self.position[0] + direction[0], self.position[1] + direction[1])
+            self.position = new_pos
+            self.path_history.append(self.position)
+
+    def navigate(self):
+        """Executes the full hierarchical navigation process."""
+        print("Starting navigation...")
+        for i, subgoal in enumerate(self.high_level_policy):
+            print(f"High-level policy selected subgoal {i+1}: {subgoal}")
+            self.execute_low_level_policy(subgoal)
+            print(f"Reached subgoal {subgoal}.")
+        
+        if self.position == self.env.goal_pos:
+            print("\nNavigation successful! Goal reached.")
+        else:
+            print("\nNavigation failed.")
+
+# --- 3. Simulation and Visualization ---
+env = UrbanEnvironment()
+agent = HierarchicalAgent(env)
+agent.navigate()
+
+# Visualize the results
+path = np.array(agent.path_history)
+subgoals = np.array(env.get_subgoals())
+plt.figure(figsize=(8, 8))
+plt.plot(path[:, 0], path[:, 1], 'c-', label='Low-Level Path')
+plt.plot(subgoals[:, 0], subgoals[:, 1], 'ro', markersize=10, label='High-Level Subgoals')
+plt.plot(env.start_pos[0], env.start_pos[1], 'go', markersize=12, label='Start')
+plt.plot(env.goal_pos[0], env.goal_pos[1], 'b*', markersize=15, label='Goal')
+
+plt.title("Hierarchical Reinforcement Learning Navigation")
+plt.xlabel("X Coordinate")
+plt.ylabel("Y Coordinate")
+plt.grid(True)
+plt.legend()
+plt.show()

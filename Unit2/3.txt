@@ -1,0 +1,98 @@
+import numpy as np
+
+# 1. Environment Setup
+maze = np.array([
+    [0, 0, 0, 0, 1],  # 0: path, -1: trap, 1: goal
+    [0, -1, 0, -1, 0],
+    [0, 0, 0, 0, 0],
+    [-1, 0, -1, 0, 0],
+    [0, 0, 0, 0, 0]
+])
+start_pos = (4, 0)
+goal_pos = (0, 4)
+trap_penalty = -10
+goal_reward = 10
+step_penalty = -1
+actions = ['up', 'down', 'left', 'right']
+
+# 2. TD(0) Algorithm
+v_table = np.zeros(maze.shape)
+alpha = 0.1  # Learning rate
+gamma = 0.9  # Discount factor
+epsilon = 0.1  # Exploration rate
+episodes = 2000
+
+def get_next_action(state):
+    if np.random.uniform(0, 1) < epsilon:
+        return np.random.choice(4) # Explore
+    else: # Exploit
+        # Find best action by looking at values of neighboring cells
+        neighbors = []
+        r, c = state
+        if r > 0: neighbors.append(v_table[r-1, c])
+        else: neighbors.append(-np.inf)
+        if r < maze.shape[0]-1: neighbors.append(v_table[r+1, c])
+        else: neighbors.append(-np.inf)
+        if c > 0: neighbors.append(v_table[r, c-1])
+        else: neighbors.append(-np.inf)
+        if c < maze.shape[1]-1: neighbors.append(v_table[r, c+1])
+        else: neighbors.append(-np.inf)
+        return np.argmax(neighbors)
+
+# 3. Main Loop
+for episode in range(episodes):
+    state = start_pos
+    while state != goal_pos and maze[state] != -1:
+        action = get_next_action(state)
+        
+        next_state = list(state)
+        if action == 0 and next_state[0] > 0: next_state[0] -= 1
+        elif action == 1 and next_state[0] < maze.shape[0] - 1: next_state[0] += 1
+        elif action == 2 and next_state[1] > 0: next_state[1] -= 1
+        elif action == 3 and next_state[1] < maze.shape[1] - 1: next_state[1] += 1
+        next_state = tuple(next_state)
+
+        # Get reward
+        reward = step_penalty
+        if maze[next_state] == -1: reward = trap_penalty
+        elif next_state == goal_pos: reward = goal_reward
+
+        # TD(0) Update
+        old_v = v_table[state]
+        next_v = v_table[next_state]
+        v_table[state] = old_v + alpha * (reward + gamma * next_v - old_v)
+        
+        state = next_state
+
+print("Training finished. Learned Value Function (V(s)):\n")
+print(np.round(v_table, 1))
+
+# 4. Extract and Display Optimal Path
+print("\nOptimal Path from Start (S) to Goal (G):")
+path_grid = np.full(maze.shape, ' ', dtype=str)
+for r in range(maze.shape[0]):
+    for c in range(maze.shape[1]):
+        if maze[r, c] == -1: path_grid[r, c] = 'X' # Trap
+path_grid[start_pos] = 'S'
+path_grid[goal_pos] = 'G'
+
+state = start_pos
+path = [state]
+while state != goal_pos:
+    action = get_next_action(state) # Use greedy policy now
+    
+    next_state = list(state)
+    if action == 0: next_state[0] -= 1
+    elif action == 1: next_state[0] += 1
+    elif action == 2: next_state[1] -= 1
+    elif action == 3: next_state[1] += 1
+    state = tuple(next_state)
+    
+    if state == goal_pos: break
+    path_grid[state] = '*'
+    
+    if len(path) > maze.size: # Prevent infinite loops
+        print("Could not find path.")
+        break
+
+print(path_grid)
